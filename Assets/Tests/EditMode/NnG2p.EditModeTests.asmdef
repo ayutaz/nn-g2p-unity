@@ -1,0 +1,21 @@
+{
+  "name": "NnG2p.EditModeTests",
+  "references": [
+    "NnG2p.Runtime",
+    "Unity.InferenceEngine"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false,
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ]
+}
