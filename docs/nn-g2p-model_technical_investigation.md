@@ -80,9 +80,9 @@
      - `uv run python scripts/export/export_onnx.py --config configs/train/ja_m9.yaml --checkpoint checkpoints/ja_m9/best_model.pt --output-dir exports/ja_m9_sentis --split --opset 15`
 
 2. **Unity配置**
-   - `encoder.onnx`, `ctc_heads.onnx`, `decoder_step.onnx`
+   - `encoder.onnx`, `ctc_heads.onnx`, `decoder_step.onnx`（`Assets/NNG2P/Models/` に配置し `ModelAsset` として読み込み）
    - `configs/vocab/ja_grapheme_m4.txt`, `configs/vocab/ja_phones_m8.txt`, `configs/vocab/ja_prosody_or_stress_m8.txt`
-   - Unity側配置先例: `Assets/StreamingAssets/g2p/`
+   - `model_meta.json` と vocab は `Assets/StreamingAssets/nn-g2p/` に配置
 
 3. **Unity実装（最小）**
    - `Tokenizer`: grapheme→id
@@ -104,39 +104,79 @@
 
 ---
 
-## 4. 実行ロードマップ
+## 4. 実行ロードマップ（最新版: 2026-02-23）
 
-### Phase 0: 固定化（0.5日）
-- 成果物: モデル版固定（M9）、評価データ固定、エクスポート手順固定
-- 完了条件: 同一入力でPython結果が再現可能
+### 4.1 現在地
 
-### Phase 1: Unity CTC実装（2日）
-- 成果物: CTC高速モードでphones/prosody出力
-- 完了条件: 100語でPython CTCとの差分率 < 1%
+- `完了`: Unity推論ランタイムの土台（CTC/AR両対応）を実装済み  
+  - `Assets/Scripts/NNG2P/NnG2pSentisRuntime.cs`
+  - `Assets/Scripts/NNG2P/NnG2pVocab.cs`
+  - `Assets/Scripts/NNG2P/NnG2pInferenceResult.cs`
+- `完了`: vocab配置とメタ情報配置を実施済み  
+  - `Assets/StreamingAssets/nn-g2p/vocab/*`
+  - `Assets/StreamingAssets/nn-g2p/model_meta.json`
+- `完了`: Hugging Faceモデル取得・分割ONNXエクスポート  
+  - 元モデル: `https://huggingface.co/ayousanz/nn-g2p-jp`
+  - 取得後に `encoder/ctc_heads/decoder_step` を生成し `Assets/NNG2P/Models/` へ配置
+- `完了`: Unityコンパイル確認（port `8746`）  
+  - ErrorCount=0
+- `完了`: スモーク推論（CTC/AR）  
+  - 入力 `東京 / 音声 / 機械学習` で CTC/AR ともに例外なし
+- `注意`: 現行 `decoder_step.onnx` は実質 target context 長 3 で安定  
+  - Unity側は `fixedDecoderContextLength=3` の固定窓入力で運用
+  - Python同値性の最終判定は Phase 2 で実施
 
-### Phase 2: Unity AR実装（3日）
-- 成果物: decoder_step反復によるgreedy推論
-- 完了条件: 100語でPython greedyとの差分率 < 1%
+### Phase 0: 認証確認 + モデル取得（0.5日, 完了）
+- 成果物:
+  - `encoder.onnx`, `ctc_heads.onnx`, `decoder_step.onnx` を `Assets/NNG2P/Models/` に配置
+  - `download_manifest.json` に `repo_id + sha + rfilename` を記録
+- 完了条件:
+  - Unity上で3つのONNXが `ModelAsset` として認識される
+  - モデル取得元の再現情報（sha）が残る
 
-### Phase 3: 評価接続（1.5日）
-- 成果物: Unity出力TSVを `eval_per/eval_prosody` で自動評価
-- 完了条件: PER/Prosody F1を自動レポート化
+### Phase 1: Unity推論スモーク（0.5日, 完了）
+- 成果物:
+  - CTCモードで phones/prosody の非空出力
+  - ARモードで EOS 収束までの出力
+- 完了条件:
+  - サンプル入力（`東京`/`音声`/`機械学習`）で例外なく出力
 
-### Phase 4: 最適化（2日）
-- 成果物: FP16/INT8候補比較、レイテンシ/メモリ計測
-- 完了条件: 目標端末で実行可能な構成を1つ確定
+### Phase 2: Python同値検証（1.5日, 進行中）
+- 成果物:
+  - 同一入力セット（100語→1000語）で Unity/Python 出力比較CSV
+  - 差分ケースの上位N件（入力・期待・実出力）レポート
+- 完了条件:
+  - CTC差分率 < 1%
+  - AR greedy差分率 < 1%
 
-### Phase 5: 継続改善（継続）
-- 成果物: 疑似ラベル更新→再学習→再エクスポートの定期運用
-- 完了条件: モデル更新を同じCI手順で再現可能
+### Phase 3: 評価接続（1.5日, 未着手）
+- 成果物:
+  - Unity出力TSVを `eval_g2p.py` 相当指標で評価するバッチ
+  - PER/WER/Prosody F1 レポート自動生成
+- 完了条件:
+  - 指標比較が手動なしで再実行可能
+
+### Phase 4: 最適化（2日, 未着手）
+- 成果物:
+  - backend別（CPU/GPU）レイテンシとメモリ計測
+  - FP32/FP16/量子化候補の比較表
+- 完了条件:
+  - 目標端末で採用構成を1つ確定
+
+### Phase 5: 運用化（継続）
+- 成果物:
+  - モデル更新時の再取得→再検証→反映の定型手順
+  - 失敗時ロールバック手順
+- 完了条件:
+  - 次回モデル更新で同手順を再利用できる
 
 ---
 
 ## 5. 優先順位（推奨）
 
-1. `M9 + CTC高速モード` を先に出す  
-2. `M9 + AR greedy` を追加して品質を上げる  
-3. 量子化・beam・自己学習ループは最後に回す
+1. Python基準（同一語彙・同一正規化）との同値検証を実施する  
+2. `decoder_step` の dynamic context 長対応を検証し、AR一致率を改善する  
+3. 評価指標（PER/WER/Prosody F1）を Unity 側バッチに接続する
 
 ---
 

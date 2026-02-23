@@ -1,0 +1,45 @@
+{
+  "generated_at_utc": "2026-02-23T14:02:08.5653763Z",
+  "repo_id": "ayousanz/nn-g2p-jp",
+  "repo_sha": "807c3a29fd7b0211545a6e80c032e78c3b6eea7f",
+  "source_checkpoint": "checkpoints/ja_m9/best_model.pt",
+  "export": {
+    "split": true,
+    "opset": 15,
+    "fixed_encoder_input_length": 128,
+    "fixed_decoder_context_length": 3,
+    "note": "decoder_step.onnx currently stable with target context length 3 in Sentis runtime"
+  },
+  "files": [
+    {
+      "local_path": "Assets/NNG2P/Models/encoder.onnx",
+      "size_bytes": 61651121,
+      "sha256": "88da430fccb6de75e6657a9bb4d45729c43a9208b4115a39c4f389d5d7b7488f"
+    },
+    {
+      "local_path": "Assets/NNG2P/Models/ctc_heads.onnx",
+      "size_bytes": 151616,
+      "sha256": "4d8cbfeebfc1aa573f3e0edd3a6b94d64e3f7696f7021e5bad4ee5278302e685"
+    },
+    {
+      "local_path": "Assets/NNG2P/Models/decoder_step.onnx",
+      "size_bytes": 46508712,
+      "sha256": "2fc60a96222f22e459b8af70dd10e42bee0a6b5f8762befc1800ba35e17f0328"
+    },
+    {
+      "local_path": "Assets/StreamingAssets/nn-g2p/vocab/ja_grapheme_m4.txt",
+      "size_bytes": 24290,
+      "sha256": "c40f74bcbbe5bd0b493f2cf611ad2893b349f2d5ffb452ecbfec9170e5a3a24d"
+    },
+    {
+      "local_path": "Assets/StreamingAssets/nn-g2p/vocab/ja_phones_m8.txt",
+      "size_bytes": 170,
+      "sha256": "8021976e15e484cbc7326e138529e9378248bd77110b22c033cb848aac67197e"
+    },
+    {
+      "local_path": "Assets/StreamingAssets/nn-g2p/vocab/ja_prosody_or_stress_m8.txt",
+      "size_bytes": 188,
+      "sha256": "5468c6a7927df51968e4ff3e47f0c7eb6b09e36d451761a2d37fffd10ec1fa6c"
+    }
+  ]
+}

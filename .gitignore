@@ -41,6 +41,10 @@ sysinfo.txt
 # Local agent/tooling files
 .codex/
 .uv-cache/
+.env
+.env.*
+third_party/
+Assets/StreamingAssets/nn-g2p/onnx/
 
 # Local-only Unity settings (already tracked files are not ignored retroactively)
 ProjectSettings/PackageManagerSettings.asset

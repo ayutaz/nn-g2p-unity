@@ -27,6 +27,8 @@ namespace NnG2p.Runtime
         [SerializeField] private int maxLen = 512;
         [SerializeField] private float maxLenRatio = 3.0f;
         [SerializeField] private float repetitionPenalty = 1.2f;
+        [SerializeField] private int fixedEncoderInputLength = 128;
+        [SerializeField] private int fixedDecoderContextLength = 3;
 
         [Header("Vocab Files (StreamingAssets/nn-g2p/vocab)")]
         [SerializeField] private string graphemeVocabFile = "ja_grapheme_m4.txt";
@@ -128,13 +130,14 @@ namespace NnG2p.Runtime
                 };
             }
 
-            using var memory = RunEncoder(srcIds);
+            var encoderInput = BuildEncoderInput(srcIds, out var srcPadMaskValues, out var effectiveSrcLen);
+            using var memory = RunEncoder(encoderInput);
             var mode = ResolveMode(modeOverride);
 
             return mode switch
             {
-                NnG2pInferenceMode.Ctc => DecodeCtc(text, graphemes, srcIds, memory),
-                NnG2pInferenceMode.Autoregressive => DecodeAutoregressive(text, graphemes, srcIds, memory),
+                NnG2pInferenceMode.Ctc => DecodeCtc(text, graphemes, srcIds, effectiveSrcLen, memory),
+                NnG2pInferenceMode.Autoregressive => DecodeAutoregressive(text, graphemes, srcIds, srcPadMaskValues, effectiveSrcLen, memory),
                 _ => throw new InvalidOperationException($"Unsupported mode: {mode}"),
             };
         }
@@ -157,9 +160,9 @@ namespace NnG2p.Runtime
         [ContextMenu("Auto Assign ONNX ModelAssets")]
         private void AutoAssignOnnxModelAssets()
         {
-            encoderModelAsset = AssetDatabase.LoadAssetAtPath<ModelAsset>("Assets/StreamingAssets/nn-g2p/onnx/encoder.onnx");
-            ctcHeadsModelAsset = AssetDatabase.LoadAssetAtPath<ModelAsset>("Assets/StreamingAssets/nn-g2p/onnx/ctc_heads.onnx");
-            decoderStepModelAsset = AssetDatabase.LoadAssetAtPath<ModelAsset>("Assets/StreamingAssets/nn-g2p/onnx/decoder_step.onnx");
+            encoderModelAsset = LoadModelAssetPreferImported("encoder.onnx");
+            ctcHeadsModelAsset = LoadModelAssetPreferImported("ctc_heads.onnx");
+            decoderStepModelAsset = LoadModelAssetPreferImported("decoder_step.onnx");
             EditorUtility.SetDirty(this);
             Debug.Log("Auto-assign completed for ONNX ModelAssets under Assets/StreamingAssets/nn-g2p/onnx.");
         }
@@ -179,6 +182,35 @@ namespace NnG2p.Runtime
             }
 
             return NnG2pInferenceMode.Ctc;
+        }
+
+        private int[] BuildEncoderInput(
+            IReadOnlyList<int> srcIds,
+            out byte[] srcPadMaskValues,
+            out int effectiveSourceLength)
+        {
+            if (fixedEncoderInputLength <= 0)
+            {
+                effectiveSourceLength = srcIds.Count;
+                srcPadMaskValues = new byte[srcIds.Count];
+                return srcIds.ToArray();
+            }
+
+            effectiveSourceLength = Mathf.Min(srcIds.Count, fixedEncoderInputLength);
+            if (srcIds.Count > fixedEncoderInputLength)
+            {
+                Debug.LogWarning($"Input length {srcIds.Count} exceeds fixedEncoderInputLength={fixedEncoderInputLength}. Truncating input.");
+            }
+
+            var padded = Enumerable.Repeat(_graphemeVocab.PadId, fixedEncoderInputLength).ToArray();
+            srcPadMaskValues = Enumerable.Repeat((byte)1, fixedEncoderInputLength).ToArray();
+            for (var i = 0; i < effectiveSourceLength; i++)
+            {
+                padded[i] = srcIds[i];
+                srcPadMaskValues[i] = 0;
+            }
+
+            return padded;
         }
 
         private Tensor<float> RunEncoder(IReadOnlyList<int> srcIds)
@@ -207,6 +239,7 @@ namespace NnG2p.Runtime
             string input,
             IReadOnlyList<string> graphemes,
             IReadOnlyList<int> srcIds,
+            int effectiveSrcLen,
             Tensor<float> memory)
         {
             if (_ctcHeadsWorker == null)
@@ -220,8 +253,8 @@ namespace NnG2p.Runtime
             using var phoneLogits = ReadOutputClone<float>(_ctcHeadsWorker, "phone_logits");
             using var prosodyLogits = ReadOutputClone<float>(_ctcHeadsWorker, "prosody_logits");
 
-            var phoneIds = DecodeCtcGreedy(phoneLogits, _phoneVocab.BlankId ?? _phoneVocab.PadId);
-            var prosodyIds = DecodeCtcGreedy(prosodyLogits, _prosodyVocab.BlankId ?? _prosodyVocab.PadId);
+            var phoneIds = DecodeCtcGreedy(phoneLogits, _phoneVocab.BlankId ?? _phoneVocab.PadId, effectiveSrcLen);
+            var prosodyIds = DecodeCtcGreedy(prosodyLogits, _prosodyVocab.BlankId ?? _prosodyVocab.PadId, effectiveSrcLen);
 
             var phoneTokens = _phoneVocab.DecodeTokenIds(phoneIds, stripSpecial: true);
             var prosodyTokens = _prosodyVocab.DecodeTokenIds(prosodyIds, stripSpecial: true);
@@ -243,6 +276,8 @@ namespace NnG2p.Runtime
             string input,
             IReadOnlyList<string> graphemes,
             IReadOnlyList<int> srcIds,
+            IReadOnlyList<byte> srcPadMaskValues,
+            int effectiveSrcLen,
             Tensor<float> memory)
         {
             if (_decoderStepWorker == null)
@@ -250,18 +285,21 @@ namespace NnG2p.Runtime
                 throw new InvalidOperationException("Autoregressive mode requested but decoder_step ModelAsset/Worker is not available.");
             }
 
-            using var srcPadMask = BuildSrcPadMask(srcIds.Count);
+            using var srcPadMask = BuildSrcPadMask(srcPadMaskValues);
 
             var phoneIds = new List<int> { _phoneVocab.BosId };
             var prosodyIds = new List<int> { _prosodyVocab.BosId };
             var phoneFinished = false;
             var prosodyFinished = false;
 
-            var effectiveMaxLen = ComputeEffectiveMaxLen(srcIds.Count);
+            var decoderContextLength = Mathf.Max(1, fixedDecoderContextLength);
+            var effectiveMaxLen = ComputeEffectiveMaxLen(effectiveSrcLen);
             for (var step = 0; step < effectiveMaxLen; step++)
             {
-                using var phoneTokensTensor = new Tensor<int>(new TensorShape(1, phoneIds.Count), phoneIds.ToArray());
-                using var prosodyTokensTensor = new Tensor<int>(new TensorShape(1, prosodyIds.Count), prosodyIds.ToArray());
+                var phoneInputIds = BuildDecoderContextTokens(phoneIds, decoderContextLength, _phoneVocab.PadId);
+                var prosodyInputIds = BuildDecoderContextTokens(prosodyIds, decoderContextLength, _prosodyVocab.PadId);
+                using var phoneTokensTensor = new Tensor<int>(new TensorShape(1, decoderContextLength), phoneInputIds);
+                using var prosodyTokensTensor = new Tensor<int>(new TensorShape(1, decoderContextLength), prosodyInputIds);
 
                 _decoderStepWorker.SetInput("memory", memory);
                 _decoderStepWorker.SetInput("src_pad_mask", srcPadMask);
@@ -313,10 +351,29 @@ namespace NnG2p.Runtime
             };
         }
 
-        private static Tensor<byte> BuildSrcPadMask(int srcLen)
+        private static Tensor<int> BuildSrcPadMask(IReadOnlyList<byte> srcPadMaskValues)
         {
-            var mask = new byte[srcLen];
-            return new Tensor<byte>(new TensorShape(1, srcLen), mask);
+            var mask = srcPadMaskValues.Select(v => (int)v).ToArray();
+            return new Tensor<int>(new TensorShape(1, mask.Length), mask);
+        }
+
+        private static int[] BuildDecoderContextTokens(IReadOnlyList<int> generatedTokens, int contextLength, int padId)
+        {
+            var context = Enumerable.Repeat(padId, contextLength).ToArray();
+            if (generatedTokens.Count == 0)
+            {
+                return context;
+            }
+
+            var copyLen = Mathf.Min(contextLength, generatedTokens.Count);
+            var srcStart = generatedTokens.Count - copyLen;
+            var dstStart = contextLength - copyLen;
+            for (var i = 0; i < copyLen; i++)
+            {
+                context[dstStart + i] = generatedTokens[srcStart + i];
+            }
+
+            return context;
         }
 
         private int ComputeEffectiveMaxLen(int srcLen)
@@ -330,7 +387,7 @@ namespace NnG2p.Runtime
             return Mathf.Max(1, Mathf.Min(maxLen, ratioBound));
         }
 
-        private static List<int> DecodeCtcGreedy(Tensor<float> logits, int blankId)
+        private static List<int> DecodeCtcGreedy(Tensor<float> logits, int blankId, int validTimeSteps)
         {
             if (logits.shape.rank != 3)
             {
@@ -339,10 +396,11 @@ namespace NnG2p.Runtime
 
             var sequenceLength = logits.shape[1];
             var vocabSize = logits.shape[2];
-            var decoded = new List<int>(sequenceLength);
+            var steps = Mathf.Clamp(validTimeSteps, 0, sequenceLength);
+            var decoded = new List<int>(steps);
 
             var prevToken = -1;
-            for (var t = 0; t < sequenceLength; t++)
+            for (var t = 0; t < steps; t++)
             {
                 var token = ArgMaxAtTime(logits, t, vocabSize);
                 if (token != blankId && token != prevToken)
@@ -459,5 +517,18 @@ namespace NnG2p.Runtime
             var streamingRoot = Application.streamingAssetsPath;
             return Path.Combine(streamingRoot, StreamingAssetsRoot, VocabFolder, vocabFileName);
         }
+
+#if UNITY_EDITOR
+        private static ModelAsset LoadModelAssetPreferImported(string fileName)
+        {
+            var imported = AssetDatabase.LoadAssetAtPath<ModelAsset>($"Assets/NNG2P/Models/{fileName}");
+            if (imported != null)
+            {
+                return imported;
+            }
+
+            return AssetDatabase.LoadAssetAtPath<ModelAsset>($"Assets/StreamingAssets/nn-g2p/onnx/{fileName}");
+        }
+#endif
     }
 }
