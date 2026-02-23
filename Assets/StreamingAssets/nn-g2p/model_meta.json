@@ -1,0 +1,23 @@
+{
+  "repo": "ayousanz/nn-g2p-jp",
+  "config": "configs/train/ja_m9.yaml",
+  "checkpoint": "best_model.pt",
+  "onnx": {
+    "encoder": "encoder.onnx",
+    "ctc_heads": "ctc_heads.onnx",
+    "decoder_step": "decoder_step.onnx"
+  },
+  "vocab": {
+    "grapheme": "ja_grapheme_m4.txt",
+    "phones": "ja_phones_m8.txt",
+    "prosody_or_stress": "ja_prosody_or_stress_m8.txt"
+  },
+  "decode": {
+    "max_len": 512,
+    "max_len_ratio": 3.0,
+    "repetition_penalty": 1.2,
+    "beam_size": 5,
+    "length_penalty": 1.0
+  },
+  "notes": "ONNX files are expected under StreamingAssets/nn-g2p/onnx."
+}
