@@ -37,3 +37,11 @@ Thumbs.db
 
 # Unity metadata cache
 sysinfo.txt
+
+# Local agent/tooling files
+.codex/
+.uv-cache/
+
+# Local-only Unity settings (already tracked files are not ignored retroactively)
+ProjectSettings/PackageManagerSettings.asset
+ProjectSettings/ProjectSettings.asset
