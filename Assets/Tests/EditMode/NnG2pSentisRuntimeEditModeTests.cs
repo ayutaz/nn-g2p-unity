@@ -144,23 +144,12 @@ namespace NnG2p.Tests.EditMode
         }
 
         [Test]
-        public void BuildDecoderContextTokens_WhenShortSequence_LeftPadsWithPadId()
+        public void FixedDecoderContextLength_DefaultValue_Is512()
         {
-            var method = typeof(NnG2pSentisRuntime).GetMethod("BuildDecoderContextTokens", BindingFlags.NonPublic | BindingFlags.Static);
-            Assert.That(method, Is.Not.Null);
-
-            var context = (int[])method.Invoke(null, new object[] { new[] { 2 }, 3, 0 });
-            CollectionAssert.AreEqual(new[] { 0, 0, 2 }, context);
-        }
-
-        [Test]
-        public void BuildDecoderContextTokens_WhenLongSequence_UsesTailWindow()
-        {
-            var method = typeof(NnG2pSentisRuntime).GetMethod("BuildDecoderContextTokens", BindingFlags.NonPublic | BindingFlags.Static);
-            Assert.That(method, Is.Not.Null);
-
-            var context = (int[])method.Invoke(null, new object[] { new[] { 4, 5, 6, 7 }, 3, 0 });
-            CollectionAssert.AreEqual(new[] { 5, 6, 7 }, context);
+            var field = typeof(NnG2pSentisRuntime).GetField("fixedDecoderContextLength", BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.That(field, Is.Not.Null);
+            var value = (int)field.GetValue(_runtime);
+            Assert.That(value, Is.EqualTo(512));
         }
 
         [Test]

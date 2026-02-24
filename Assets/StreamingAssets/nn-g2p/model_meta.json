@@ -21,7 +21,7 @@
   "runtime": {
     "inference_mode": "autoregressive_only",
     "fixed_encoder_input_length": 512,
-    "fixed_decoder_context_length": 3
+    "fixed_decoder_context_length": 512
   },
-  "notes": "ONNX files are expected under StreamingAssets/nn-g2p/onnx. Unity runtime is AR-only and split ONNX is exported with src_len=512 seed for Sentis stability."
+  "notes": "ONNX files are expected under StreamingAssets/nn-g2p/onnx. Unity runtime is AR-only and split ONNX is exported with src_len=512 seed. Decoder exports full-sequence logits for stable AR sentence inference."
 }

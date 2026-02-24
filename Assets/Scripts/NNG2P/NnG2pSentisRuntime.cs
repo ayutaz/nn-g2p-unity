@@ -27,7 +27,7 @@ namespace NnG2p.Runtime
         [SerializeField] private float maxLenRatio = 3.0f;
         [SerializeField] private float repetitionPenalty = 1.2f;
         [SerializeField] private int fixedEncoderInputLength = 512;
-        [SerializeField] private int fixedDecoderContextLength = 3;
+        [SerializeField] private int fixedDecoderContextLength = 512;
 
         [Header("Vocab Files (StreamingAssets/nn-g2p/vocab)")]
         [SerializeField] private string graphemeVocabFile = "ja_grapheme_m4.txt";
@@ -241,11 +241,15 @@ namespace NnG2p.Runtime
             var prosodyFinished = false;
 
             var decoderContextLength = Mathf.Max(1, fixedDecoderContextLength);
+            var phoneInputIds = Enumerable.Repeat(_phoneVocab.PadId, decoderContextLength).ToArray();
+            var prosodyInputIds = Enumerable.Repeat(_prosodyVocab.PadId, decoderContextLength).ToArray();
+            phoneInputIds[0] = _phoneVocab.BosId;
+            prosodyInputIds[0] = _prosodyVocab.BosId;
+
+            var decodePosition = 0;
             var effectiveMaxLen = ComputeEffectiveMaxLen(effectiveSrcLen);
             for (var step = 0; step < effectiveMaxLen; step++)
             {
-                var phoneInputIds = BuildDecoderContextTokens(phoneIds, decoderContextLength, _phoneVocab.PadId);
-                var prosodyInputIds = BuildDecoderContextTokens(prosodyIds, decoderContextLength, _prosodyVocab.PadId);
                 using var phoneTokensTensor = new Tensor<int>(new TensorShape(1, decoderContextLength), phoneInputIds);
                 using var prosodyTokensTensor = new Tensor<int>(new TensorShape(1, decoderContextLength), prosodyInputIds);
 
@@ -260,12 +264,14 @@ namespace NnG2p.Runtime
 
                 var nextPhone = SelectNextToken(
                     phoneLogits,
+                    decodePosition,
                     phoneIds,
                     phoneFinished,
                     _phoneVocab.EosId,
                     repetitionPenalty);
                 var nextProsody = SelectNextToken(
                     prosodyLogits,
+                    decodePosition,
                     prosodyIds,
                     prosodyFinished,
                     _prosodyVocab.EosId,
@@ -277,8 +283,21 @@ namespace NnG2p.Runtime
                 phoneFinished |= nextPhone == _phoneVocab.EosId;
                 prosodyFinished |= nextProsody == _prosodyVocab.EosId;
 
+                decodePosition++;
+                if (decodePosition < decoderContextLength)
+                {
+                    phoneInputIds[decodePosition] = nextPhone;
+                    prosodyInputIds[decodePosition] = nextProsody;
+                }
+
                 if (phoneFinished && prosodyFinished)
                 {
+                    break;
+                }
+
+                if (decodePosition >= decoderContextLength)
+                {
+                    Debug.LogWarning($"Decoder context length ({decoderContextLength}) exhausted before EOS.");
                     break;
                 }
             }
@@ -305,25 +324,6 @@ namespace NnG2p.Runtime
             return new Tensor<int>(new TensorShape(1, mask.Length), mask);
         }
 
-        private static int[] BuildDecoderContextTokens(IReadOnlyList<int> generatedTokens, int contextLength, int padId)
-        {
-            var context = Enumerable.Repeat(padId, contextLength).ToArray();
-            if (generatedTokens.Count == 0)
-            {
-                return context;
-            }
-
-            var copyLen = Mathf.Min(contextLength, generatedTokens.Count);
-            var srcStart = generatedTokens.Count - copyLen;
-            var dstStart = contextLength - copyLen;
-            for (var i = 0; i < copyLen; i++)
-            {
-                context[dstStart + i] = generatedTokens[srcStart + i];
-            }
-
-            return context;
-        }
-
         private int ComputeEffectiveMaxLen(int srcLen)
         {
             if (maxLenRatio <= 0.0f)
@@ -337,6 +337,7 @@ namespace NnG2p.Runtime
 
         private static int SelectNextToken(
             Tensor<float> logits,
+            int decodePosition,
             IReadOnlyCollection<int> generatedTokens,
             bool finished,
             int eosId,
@@ -347,12 +348,23 @@ namespace NnG2p.Runtime
                 return eosId;
             }
 
-            if (logits.shape.rank != 2 || logits.shape[0] != 1)
+            int vocabSize;
+            int timeIndex = 0;
+            if (logits.shape.rank == 2 && logits.shape[0] == 1)
             {
-                throw new InvalidOperationException($"Decoder logits shape must be [1, vocab], but got {logits.shape}.");
+                vocabSize = logits.shape[1];
+            }
+            else if (logits.shape.rank == 3 && logits.shape[0] == 1)
+            {
+                var seqLen = logits.shape[1];
+                timeIndex = Mathf.Clamp(decodePosition, 0, seqLen - 1);
+                vocabSize = logits.shape[2];
+            }
+            else
+            {
+                throw new InvalidOperationException($"Decoder logits shape must be [1, vocab] or [1, seq, vocab], but got {logits.shape}.");
             }
 
-            var vocabSize = logits.shape[1];
             HashSet<int> penalized = null;
             if (repetitionPenaltyValue > 1.0f)
             {
@@ -363,7 +375,7 @@ namespace NnG2p.Runtime
             var bestScore = float.NegativeInfinity;
             for (var i = 0; i < vocabSize; i++)
             {
-                var score = logits[0, i];
+                var score = logits.shape.rank == 2 ? logits[0, i] : logits[0, timeIndex, i];
                 if (penalized != null && penalized.Contains(i))
                 {
                     score /= repetitionPenaltyValue;

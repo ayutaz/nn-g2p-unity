@@ -1,5 +1,5 @@
 {
-  "generated_at_utc": "2026-02-24T16:08:12.4525149Z",
+  "generated_at_utc": "2026-02-24T17:00:43.8173596Z",
   "repo_id": "ayousanz/nn-g2p-jp",
   "repo_sha": "807c3a29fd7b0211545a6e80c032e78c3b6eea7f",
   "source_checkpoint": "checkpoints/ja_m9/best_model.pt",
@@ -7,9 +7,9 @@
     "split": true,
     "opset": 15,
     "fixed_encoder_input_length": 512,
-    "fixed_decoder_context_length": 3,
+    "fixed_decoder_context_length": 512,
     "inference_mode": "autoregressive_only",
-    "note": "Split ONNX re-exported from ja_m9 checkpoint with src_len seed=512 for Sentis runtime stability (AR-only runtime)."
+    "note": "Split ONNX re-exported from ja_m9 checkpoint with src_len seed=512 for Sentis runtime stability (AR-only runtime). Decoder outputs full-sequence logits."
   },
   "files": [
     {
@@ -19,8 +19,8 @@
     },
     {
       "local_path": "Assets/NNG2P/Models/decoder_step.onnx",
-      "size_bytes": 46508712,
-      "sha256": "0dbfe3771f5a211a3b749bd322d8278678db83ba916c9a74d449b45bc48b48a0"
+      "size_bytes": 49824191,
+      "sha256": "11821663b2b914acc68910576be958e87eaf2820a0e245486b14b35b091617b7"
     },
     {
       "local_path": "Assets/StreamingAssets/nn-g2p/vocab/ja_grapheme_m4.txt",

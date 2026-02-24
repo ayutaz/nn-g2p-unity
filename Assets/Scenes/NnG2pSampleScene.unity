@@ -925,7 +925,7 @@ MonoBehaviour:
   maxLenRatio: 3
   repetitionPenalty: 1.2
   fixedEncoderInputLength: 512
-  fixedDecoderContextLength: 3
+  fixedDecoderContextLength: 512
   graphemeVocabFile: ja_grapheme_m4.txt
   phoneVocabFile: ja_phones_m8.txt
   prosodyVocabFile: ja_prosody_or_stress_m8.txt
