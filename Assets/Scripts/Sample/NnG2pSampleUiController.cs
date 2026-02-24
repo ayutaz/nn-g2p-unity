@@ -1,5 +1,6 @@
 using System;
 using NnG2p.Runtime;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -9,17 +10,17 @@ public sealed class NnG2pSampleUiController : MonoBehaviour
     [SerializeField] private NnG2pSentisRuntime runtime;
 
     [Header("UI")]
-    [SerializeField] private InputField inputField;
+    [SerializeField] private TMP_InputField inputField;
     [SerializeField] private Button runCtcButton;
     [SerializeField] private Button runArButton;
     [SerializeField] private Button runAutoButton;
     [SerializeField] private Button clearButton;
-    [SerializeField] private Text phonesText;
-    [SerializeField] private Text prosodyText;
-    [SerializeField] private Text errorText;
+    [SerializeField] private TMP_Text phonesText;
+    [SerializeField] private TMP_Text prosodyText;
+    [SerializeField] private TMP_Text errorText;
 
     [Header("Defaults")]
-    [SerializeField] private string defaultInput = "東京";
+    [SerializeField] private string defaultInput = "こんにちは、今日はいい天気ですね";
 
     private void Reset()
     {
