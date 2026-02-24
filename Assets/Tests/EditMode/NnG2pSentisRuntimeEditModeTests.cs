@@ -110,6 +110,40 @@ namespace NnG2p.Tests.EditMode
         }
 
         [Test]
+        public void FixedEncoderInputLength_DefaultValue_Is512()
+        {
+            var field = typeof(NnG2pSentisRuntime).GetField("fixedEncoderInputLength", BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.That(field, Is.Not.Null);
+            var value = (int)field.GetValue(_runtime);
+            Assert.That(value, Is.EqualTo(512));
+        }
+
+        [Test]
+        public void BuildEncoderInput_WhenSourceExceeds512_TruncatesTo512()
+        {
+            SetField("fixedEncoderInputLength", 512);
+            SetField("_graphemeVocab", CreateVocab());
+
+            var src = new int[600];
+            for (var i = 0; i < src.Length; i++)
+            {
+                src[i] = i + 1;
+            }
+
+            var args = new object[] { src, null, 0 };
+            var encoded = (int[])InvokeInstance("BuildEncoderInput", args);
+            var mask = (byte[])args[1];
+            var effectiveLen = (int)args[2];
+
+            Assert.That(encoded.Length, Is.EqualTo(512));
+            Assert.That(mask.Length, Is.EqualTo(512));
+            Assert.That(effectiveLen, Is.EqualTo(512));
+            Assert.That(mask[511], Is.EqualTo((byte)0));
+            Assert.That(encoded[0], Is.EqualTo(1));
+            Assert.That(encoded[511], Is.EqualTo(512));
+        }
+
+        [Test]
         public void BuildDecoderContextTokens_WhenShortSequence_LeftPadsWithPadId()
         {
             var method = typeof(NnG2pSentisRuntime).GetMethod("BuildDecoderContextTokens", BindingFlags.NonPublic | BindingFlags.Static);
@@ -150,17 +184,17 @@ namespace NnG2p.Tests.EditMode
         }
 
         [Test]
-        public void ResolveMode_WhenAutoAndNoDecoder_FallsBackToCtc()
+        public void ResolveMode_WhenAuto_ReturnsAutoregressive()
         {
             SetField("defaultMode", NnG2pInferenceMode.Auto);
             var value = (NnG2pInferenceMode)InvokeInstance("ResolveMode", (NnG2pInferenceMode?)null);
-            Assert.That(value, Is.EqualTo(NnG2pInferenceMode.Ctc));
+            Assert.That(value, Is.EqualTo(NnG2pInferenceMode.Autoregressive));
         }
 
         [Test]
         public void ResolveMode_WhenOverrideProvided_UsesOverride()
         {
-            SetField("defaultMode", NnG2pInferenceMode.Ctc);
+            SetField("defaultMode", NnG2pInferenceMode.Auto);
             var value = (NnG2pInferenceMode)InvokeInstance("ResolveMode", NnG2pInferenceMode.Autoregressive);
             Assert.That(value, Is.EqualTo(NnG2pInferenceMode.Autoregressive));
         }

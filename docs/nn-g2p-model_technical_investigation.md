@@ -4,6 +4,8 @@
 調査対象: `C:\Users\yuta\Desktop\Private\nn-g2p-model`  
 調査方式: 15サブエージェント（観点分割）
 
+注記（2026-02-24更新）: Unity実装はAR専用へ移行済み。本文中のCTC記述は履歴情報を含む。
+
 ## 0. 結論
 
 - 現在の実運用候補は `M9`。`WikiPron PER 2.17% / Prosody F1 0.834`（`docs/eval/milestone_results.md`）。
@@ -104,7 +106,7 @@
 
 ---
 
-## 4. 実行ロードマップ（最新版: 2026-02-23 / commit `275ffed`）
+## 4. 実行ロードマップ（最新版: 2026-02-24）
 
 ### 4.1 現在地
 
@@ -116,7 +118,10 @@
   - `repo_sha`: `807c3a29fd7b0211545a6e80c032e78c3b6eea7f`
 - `完了`: Unityランタイム安定化  
   - `Assets/Scripts/NNG2P/NnG2pSentisRuntime.cs`
-  - `fixedEncoderInputLength=128`, `fixedDecoderContextLength=3` を実装
+  - `fixedEncoderInputLength=512`, `fixedDecoderContextLength=3` を実装
+- `完了`: 長文入力対応（Python実装に合わせた文入力）  
+  - `ja_m9` チェックポイントから分割ONNXを再エクスポート（`src_len seed=512`）
+  - `encoder.onnx` / `decoder_step.onnx` の内部固定長を 128 -> 512 に更新
 - `完了`: Unity検証  
   - コンパイル: ErrorCount=0（port `8746`）
   - スモーク: `東京 / 音声 / 機械学習` で CTC/AR ともに例外なし

@@ -1,30 +1,26 @@
 {
-  "generated_at_utc": "2026-02-23T14:02:08.5653763Z",
+  "generated_at_utc": "2026-02-24T16:08:12.4525149Z",
   "repo_id": "ayousanz/nn-g2p-jp",
   "repo_sha": "807c3a29fd7b0211545a6e80c032e78c3b6eea7f",
   "source_checkpoint": "checkpoints/ja_m9/best_model.pt",
   "export": {
     "split": true,
     "opset": 15,
-    "fixed_encoder_input_length": 128,
+    "fixed_encoder_input_length": 512,
     "fixed_decoder_context_length": 3,
-    "note": "decoder_step.onnx currently stable with target context length 3 in Sentis runtime"
+    "inference_mode": "autoregressive_only",
+    "note": "Split ONNX re-exported from ja_m9 checkpoint with src_len seed=512 for Sentis runtime stability (AR-only runtime)."
   },
   "files": [
     {
       "local_path": "Assets/NNG2P/Models/encoder.onnx",
       "size_bytes": 61651121,
-      "sha256": "88da430fccb6de75e6657a9bb4d45729c43a9208b4115a39c4f389d5d7b7488f"
-    },
-    {
-      "local_path": "Assets/NNG2P/Models/ctc_heads.onnx",
-      "size_bytes": 151616,
-      "sha256": "4d8cbfeebfc1aa573f3e0edd3a6b94d64e3f7696f7021e5bad4ee5278302e685"
+      "sha256": "6e5c2f06e1ce5ff6b8d3a67b23a5e3fe4ccbd3498b055d46adb4d3cb22cc761d"
     },
     {
       "local_path": "Assets/NNG2P/Models/decoder_step.onnx",
       "size_bytes": 46508712,
-      "sha256": "2fc60a96222f22e459b8af70dd10e42bee0a6b5f8762befc1800ba35e17f0328"
+      "sha256": "0dbfe3771f5a211a3b749bd322d8278678db83ba916c9a74d449b45bc48b48a0"
     },
     {
       "local_path": "Assets/StreamingAssets/nn-g2p/vocab/ja_grapheme_m4.txt",

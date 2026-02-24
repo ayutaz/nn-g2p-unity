@@ -4,7 +4,6 @@
   "checkpoint": "best_model.pt",
   "onnx": {
     "encoder": "encoder.onnx",
-    "ctc_heads": "ctc_heads.onnx",
     "decoder_step": "decoder_step.onnx"
   },
   "vocab": {
@@ -19,5 +18,10 @@
     "beam_size": 5,
     "length_penalty": 1.0
   },
-  "notes": "ONNX files are expected under StreamingAssets/nn-g2p/onnx."
+  "runtime": {
+    "inference_mode": "autoregressive_only",
+    "fixed_encoder_input_length": 512,
+    "fixed_decoder_context_length": 3
+  },
+  "notes": "ONNX files are expected under StreamingAssets/nn-g2p/onnx. Unity runtime is AR-only and split ONNX is exported with src_len=512 seed for Sentis stability."
 }

@@ -9,8 +9,7 @@ namespace NnG2p.Runtime
         [SerializeField] private NnG2pSentisRuntime runtime;
 
         [Header("Input")]
-        [SerializeField] private string inputText = "東京";
-        [SerializeField] private NnG2pInferenceMode mode = NnG2pInferenceMode.Ctc;
+        [SerializeField] private string inputText = "こんにちは、今日はいい天気ですね";
         [SerializeField] private bool runOnStart;
         [SerializeField] private bool showOnGui = true;
 
@@ -56,7 +55,7 @@ namespace NnG2p.Runtime
 
             try
             {
-                var result = runtime.Predict(inputText ?? string.Empty, mode);
+                var result = runtime.Predict(inputText ?? string.Empty, NnG2pInferenceMode.Autoregressive);
                 phoneOutput = string.Join(" ", result.Phones ?? Array.Empty<string>());
                 prosodyOutput = string.Join(" ", result.Prosody ?? Array.Empty<string>());
                 lastError = string.Empty;
@@ -90,24 +89,7 @@ namespace NnG2p.Runtime
             GUILayout.Label("NN-G2P Sample");
             GUILayout.Label("Input");
             inputText = GUILayout.TextField(inputText ?? string.Empty);
-
-            GUILayout.BeginHorizontal();
-            if (GUILayout.Toggle(mode == NnG2pInferenceMode.Ctc, "CTC", "Button"))
-            {
-                mode = NnG2pInferenceMode.Ctc;
-            }
-
-            if (GUILayout.Toggle(mode == NnG2pInferenceMode.Autoregressive, "AR", "Button"))
-            {
-                mode = NnG2pInferenceMode.Autoregressive;
-            }
-
-            if (GUILayout.Toggle(mode == NnG2pInferenceMode.Auto, "Auto", "Button"))
-            {
-                mode = NnG2pInferenceMode.Auto;
-            }
-
-            GUILayout.EndHorizontal();
+            GUILayout.Label("Mode: AR only");
 
             GUILayout.BeginHorizontal();
             if (GUILayout.Button("Run", GUILayout.Height(30)))

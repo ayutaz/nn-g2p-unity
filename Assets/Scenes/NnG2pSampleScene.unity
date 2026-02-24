@@ -899,7 +899,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: NnG2p.Runtime::NnG2p.Runtime.NnG2pSampleSceneController
   runtime: {fileID: 606897196}
   inputText: "\u3053\u3093\u306B\u3061\u306F\u3001\u4ECA\u65E5\u306F\u3044\u3044\u5929\u6C17\u3067\u3059\u306D"
-  mode: 1
   runOnStart: 0
   showOnGui: 0
   phoneOutput: 
@@ -918,15 +917,14 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: NnG2p.Runtime::NnG2p.Runtime.NnG2pSentisRuntime
   encoderModelAsset: {fileID: 5022602860645237092, guid: a024625d410c83e4f80024972448c055, type: 3}
-  ctcHeadsModelAsset: {fileID: 5022602860645237092, guid: 639ba1a81985e7746b2ce5fbad963598, type: 3}
   decoderStepModelAsset: {fileID: 5022602860645237092, guid: c4fdcf9e7f16807479d06bdabf19befa, type: 3}
   backendType: 512
-  defaultMode: 1
+  defaultMode: 2
   language: ja
   maxLen: 512
   maxLenRatio: 3
   repetitionPenalty: 1.2
-  fixedEncoderInputLength: 128
+  fixedEncoderInputLength: 512
   fixedDecoderContextLength: 3
   graphemeVocabFile: ja_grapheme_m4.txt
   phoneVocabFile: ja_phones_m8.txt
@@ -1767,12 +1765,12 @@ GameObject:
   - component: {fileID: 1256247472}
   - component: {fileID: 1256247471}
   m_Layer: 0
-  m_Name: RunCtcButton
+  m_Name: LegacyButtonHidden
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &1256247470
 RectTransform:
   m_ObjectHideFlags: 0
@@ -2477,9 +2475,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::NnG2pSampleUiController
   runtime: {fileID: 606897196}
   inputField: {fileID: 1924089741}
-  runCtcButton: {fileID: 1256247472}
   runArButton: {fileID: 703904798}
-  runAutoButton: {fileID: 1961486509}
   clearButton: {fileID: 1317163824}
   phonesText: {fileID: 1048315981}
   prosodyText: {fileID: 1338952902}
@@ -3000,7 +2996,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Run CTC
+  m_text: Hidden
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: cf18f87e813f86340b05bee9db99bfe3, type: 2}
   m_sharedMaterial: {fileID: -440127301186548130, guid: cf18f87e813f86340b05bee9db99bfe3, type: 2}
@@ -3293,12 +3289,12 @@ GameObject:
   - component: {fileID: 1961486509}
   - component: {fileID: 1961486508}
   m_Layer: 0
-  m_Name: RunAutoButton
+  m_Name: LegacyAutoHidden
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &1961486507
 RectTransform:
   m_ObjectHideFlags: 0

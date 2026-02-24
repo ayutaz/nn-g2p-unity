@@ -71,13 +71,6 @@ namespace NnG2p.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator Predict_CtcWithoutEncoder_ThrowsInvalidOperationException()
-        {
-            Assert.Throws<InvalidOperationException>(() => _runtime.Predict("東京", NnG2pInferenceMode.Ctc));
-            yield return null;
-        }
-
-        [UnityTest]
         public IEnumerator Predict_AutoregressiveWithoutEncoder_ThrowsInvalidOperationException()
         {
             Assert.Throws<InvalidOperationException>(() => _runtime.Predict("東京", NnG2pInferenceMode.Autoregressive));

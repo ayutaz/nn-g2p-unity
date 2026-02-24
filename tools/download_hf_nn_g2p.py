@@ -27,7 +27,7 @@ PROXY_ENV_KEYS = (
     "GIT_HTTPS_PROXY",
 )
 
-EXPECTED_ONNX = ("encoder.onnx", "ctc_heads.onnx", "decoder_step.onnx")
+EXPECTED_ONNX = ("encoder.onnx", "decoder_step.onnx")
 EXPECTED_VOCAB = (
     "ja_grapheme_m4.txt",
     "ja_phones_m8.txt",

@@ -11,9 +11,7 @@ public sealed class NnG2pSampleUiController : MonoBehaviour
 
     [Header("UI")]
     [SerializeField] private TMP_InputField inputField;
-    [SerializeField] private Button runCtcButton;
     [SerializeField] private Button runArButton;
-    [SerializeField] private Button runAutoButton;
     [SerializeField] private Button clearButton;
     [SerializeField] private TMP_Text phonesText;
     [SerializeField] private TMP_Text prosodyText;
@@ -39,19 +37,9 @@ public sealed class NnG2pSampleUiController : MonoBehaviour
             inputField.text = defaultInput;
         }
 
-        if (runCtcButton != null)
-        {
-            runCtcButton.onClick.AddListener(RunCtc);
-        }
-
         if (runArButton != null)
         {
             runArButton.onClick.AddListener(RunAr);
-        }
-
-        if (runAutoButton != null)
-        {
-            runAutoButton.onClick.AddListener(RunAuto);
         }
 
         if (clearButton != null)
@@ -62,19 +50,9 @@ public sealed class NnG2pSampleUiController : MonoBehaviour
 
     private void OnDestroy()
     {
-        if (runCtcButton != null)
-        {
-            runCtcButton.onClick.RemoveListener(RunCtc);
-        }
-
         if (runArButton != null)
         {
             runArButton.onClick.RemoveListener(RunAr);
-        }
-
-        if (runAutoButton != null)
-        {
-            runAutoButton.onClick.RemoveListener(RunAuto);
         }
 
         if (clearButton != null)
@@ -83,22 +61,10 @@ public sealed class NnG2pSampleUiController : MonoBehaviour
         }
     }
 
-    [ContextMenu("Run CTC")]
-    public void RunCtc()
-    {
-        RunInference(NnG2pInferenceMode.Ctc);
-    }
-
     [ContextMenu("Run AR")]
     public void RunAr()
     {
-        RunInference(NnG2pInferenceMode.Autoregressive);
-    }
-
-    [ContextMenu("Run Auto")]
-    public void RunAuto()
-    {
-        RunInference(NnG2pInferenceMode.Auto);
+        RunInference();
     }
 
     [ContextMenu("Clear Output")]
@@ -120,7 +86,7 @@ public sealed class NnG2pSampleUiController : MonoBehaviour
         }
     }
 
-    private void RunInference(NnG2pInferenceMode mode)
+    private void RunInference()
     {
         if (runtime == null)
         {
@@ -131,7 +97,7 @@ public sealed class NnG2pSampleUiController : MonoBehaviour
         var text = inputField != null ? inputField.text : string.Empty;
         try
         {
-            var result = runtime.Predict(text ?? string.Empty, mode);
+            var result = runtime.Predict(text ?? string.Empty, NnG2pInferenceMode.Autoregressive);
             var phones = string.Join(" ", result.Phones ?? Array.Empty<string>());
             var prosody = string.Join(" ", result.Prosody ?? Array.Empty<string>());
 
