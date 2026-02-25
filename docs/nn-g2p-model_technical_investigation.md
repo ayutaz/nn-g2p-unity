@@ -4,14 +4,14 @@
 調査対象: `C:\Users\yuta\Desktop\Private\nn-g2p-model`  
 調査方式: 15サブエージェント（観点分割）
 
-注記（2026-02-24更新）: Unity実装はAR専用へ移行済み。本文中のCTC記述は履歴情報を含む。
+注記（2026-02-25更新）: Unity実装はAR専用。本文はAR専用構成に更新済み。
 
 ## 0. 結論
 
 - 現在の実運用候補は `M9`。`WikiPron PER 2.17% / Prosody F1 0.834`（`docs/eval/milestone_results.md`）。
-- Unity連携は既存実装で可能。`scripts/export/export_onnx.py` に `opset=15` の分割ONNX（`encoder.onnx / ctc_heads.onnx / decoder_step.onnx`）がある。
-- 先に実装すべきは `CTC高速モード`。その後に `AR高精度モード` を追加するのが安全。
-- ドキュメント整合性に差分あり。`README.md` はM4中心で、`docs/eval/milestone_results.md` はM9まで更新済み。
+- Unity連携は既存実装で可能。`scripts/export/export_onnx.py` に `opset=15` の分割ONNX（`encoder.onnx / decoder_step.onnx`）がある。
+- Unity運用は `AR専用モード` で固定し、Python同値性と品質検証を優先する。
+- 現在同梱モデル（`ja_m9`）は日本語前提。英語入力を高品質で扱うには別チェックポイントまたは前処理正規化が必要。
 
 ---
 
@@ -25,7 +25,7 @@
 | 4 | 日本語単語データ生成 | `scripts/train/build_train_dataset_ja.py` | Sudachi OOV分類 + pyopenjtalk/marine対応 | JA更新学習の再現性が高い |
 | 5 | 日本語文データ生成 | `scripts/train/build_sentence_dataset_ja.py` | Wikipedia/Aozora由来の文生成 + 並列前処理 | 文脈付き学習に必要な資産が揃っている |
 | 6 | vocab生成 | `scripts/train/build_vocab.py` | grapheme/phones/prosodyを別管理 | Unityで3 vocab を個別ロードする設計が必要 |
-| 7 | モデル本体 | `scripts/train/g2p_utils.py` | Pre-LN, shared decoder, conformer, joint CTC対応 | CTC/ARの二段導入が可能 |
+| 7 | モデル本体 | `scripts/train/g2p_utils.py` | Pre-LN, shared decoder, conformer, joint CTC対応 | Unity運用はAR専用で導入可能 |
 | 8 | 学習ループ | `scripts/train/train_g2p.py` | DDP, KD, R-Drop, class-weight focal、resume時vocab拡張対応 | 継続改善の運用設計がしやすい |
 | 9 | 評価ループ | `scripts/train/eval_g2p.py` | PER/WER/Prosody F1、OOV分解、詳細解析あり | Unity出力の同一指標比較が容易 |
 | 10 | IPA正規化 | `scripts/data/normalize_ipa.py` | `e i -> e:` 等の評価整合ルールが実装済み | Unity側の評価時にも同ルールを移植 |
@@ -55,14 +55,21 @@
 ### 2.3 デプロイ適性（Unity/Sentis）
 
 - `export_onnx.py` は `--split --opset 15` がデフォルト推奨で、Sentis向け実装と整合。
-- 分割後は `encoder -> (ctc_heads | decoder_step反復)` で実行できるため、C#で制御しやすい。
+- 分割後は `encoder -> decoder_step反復`（AR）で実行できるため、C#で制御しやすい。
 - `--quantize` はONNX Runtimeのdynamic INT8。Sentis実行時の精度・速度は別途実測が必要。
 
 ### 2.4 リスク
 
-- ドキュメント更新ズレ: `README.md` と `docs/eval/milestone_results.md` の最新版が一致していない。
+- ドキュメント更新ズレ: モデル更新時に `README.md` / `docs` / `StreamingAssets` メタ情報の同期漏れが起こりやすい。
 - `train` で `wandb.enabled=true` かつ `WANDB_API_KEY` 未設定だと停止する設計。
 - 疑似ラベルTSVはprosody空欄になるため、KD比率設計を誤るとprosody品質に影響し得る。
+
+### 2.5 言語対応（現行モデル）
+
+- Pythonコードベースは `lang: ja/en` の分岐を持つ（`scripts/train/g2p_utils.py`）。
+- ただし現在運用しているモデル設定は `configs/train/ja_m9.yaml` で、語彙も `ja_*`（`ja_grapheme_m4.txt` など）を使用。
+- そのため Unity 実装は現時点で「日本語入力前提」の扱いが正しい。
+- 英語/英数字を含む入力に対しては `<unk>` 化で情報欠落が起こり得るため、必要なら事前正規化を導入する。
 
 ---
 
@@ -70,9 +77,9 @@
 
 ### 3.1 方針
 
-1. まず `M9` を固定して `CTC高速モード` を実装。  
-2. 次に `AR高精度モード`（greedy）を追加。  
-3. 最後に `beam` や量子化比較を追加。
+1. `M9` を固定して `ARモード` を実装・維持。  
+2. Python実装との同値性検証を優先。  
+3. その後に `beam` や量子化比較を追加。
 
 ### 3.2 実装ステップ
 
@@ -82,19 +89,19 @@
      - `uv run python scripts/export/export_onnx.py --config configs/train/ja_m9.yaml --checkpoint checkpoints/ja_m9/best_model.pt --output-dir exports/ja_m9_sentis --split --opset 15`
 
 2. **Unity配置**
-   - `encoder.onnx`, `ctc_heads.onnx`, `decoder_step.onnx`（`Assets/NNG2P/Models/` に配置し `ModelAsset` として読み込み）
+   - `encoder.onnx`, `decoder_step.onnx`（`Assets/NNG2P/Models/` に配置し `ModelAsset` として読み込み）
    - `configs/vocab/ja_grapheme_m4.txt`, `configs/vocab/ja_phones_m8.txt`, `configs/vocab/ja_prosody_or_stress_m8.txt`
    - `model_meta.json` と vocab は `Assets/StreamingAssets/nn-g2p/` に配置
 
 3. **Unity実装（最小）**
    - `Tokenizer`: grapheme→id
    - `EncoderRunner`: src→memory
-   - `CTCDecoder`: memory→phone/prosody（collapse+blank除去）
+   - `ARDecoder`: `decoder_step.onnx` を反復呼び出ししてgreedy生成
    - `Detokenizer`: id→token列
 
 4. **Unity実装（拡張）**
-   - `ARDecoder`: `decoder_step.onnx` を反復呼び出ししてgreedy生成
    - `max_len_ratio`/`repetition_penalty` を Python 実装相当に合わせる
+   - 必要時に `beam` と量子化比較を追加
 
 5. **同値性検証**
    - Python baseline: `scripts/train/eval_g2p.py` で同一入力の推論結果を保存
@@ -106,48 +113,48 @@
 
 ---
 
-## 4. 実行ロードマップ（最新版: 2026-02-24）
+## 4. 実行ロードマップ（最新版: 2026-02-25）
 
 ### 4.1 現在地
 
-- `完了`: HFモデル取得、分割ONNX生成、Unity取り込み  
+- `完了`: HFモデル取得、分割ONNX生成、Unity取り込み（AR専用）  
   - 元モデル: `https://huggingface.co/ayousanz/nn-g2p-jp`
-  - 配置先: `Assets/NNG2P/Models/encoder.onnx`, `Assets/NNG2P/Models/ctc_heads.onnx`, `Assets/NNG2P/Models/decoder_step.onnx`
+  - 配置先: `Assets/NNG2P/Models/encoder.onnx`, `Assets/NNG2P/Models/decoder_step.onnx`
 - `完了`: 再現性メタデータ記録  
   - `Assets/StreamingAssets/nn-g2p/download_manifest.json`
   - `repo_sha`: `807c3a29fd7b0211545a6e80c032e78c3b6eea7f`
 - `完了`: Unityランタイム安定化  
   - `Assets/Scripts/NNG2P/NnG2pSentisRuntime.cs`
-  - `fixedEncoderInputLength=512`, `fixedDecoderContextLength=3` を実装
+  - `fixedEncoderInputLength=512`, `fixedDecoderContextLength=512` を実装
 - `完了`: 長文入力対応（Python実装に合わせた文入力）  
   - `ja_m9` チェックポイントから分割ONNXを再エクスポート（`src_len seed=512`）
   - `encoder.onnx` / `decoder_step.onnx` の内部固定長を 128 -> 512 に更新
 - `完了`: Unity検証  
   - コンパイル: ErrorCount=0（port `8746`）
-  - スモーク: `東京 / 音声 / 機械学習` で CTC/AR ともに例外なし
+  - テスト: EditMode `19/19` / PlayMode `9/9` pass（2026-02-25）
+  - スモーク: `こんにちは、今日はいい天気ですね` で AR 推論ログを確認（phones/prosodyとも出力）
 - `未完了`: Python同値検証（100語/1000語）と指標比較
 
 ### Phase 0: 認証確認 + モデル取得（完了）
 - 成果物:
-  - ONNX 3分割モデルを `ModelAsset` として導入
+  - ONNX 2モデル（`encoder` / `decoder_step`）を `ModelAsset` として導入
   - `download_manifest.json` に repo SHA とファイルSHA256を記録
 - 完了条件:
-  - Unity上で3モデル読込が可能
+  - Unity上で2モデル読込が可能
   - 取得元追跡情報が保持される
 
 ### Phase 1: Unity推論スモーク（完了）
 - 成果物:
-  - CTC/AR の推論実行ルートを実装
+  - AR 推論実行ルートを実装
   - 入力3サンプルで例外なしを確認
 - 完了条件:
-  - `Predict` の CTC/AR 両分岐が動作する
+  - `Predict` の AR 分岐が動作する
 
 ### Phase 2: Python同値検証（次フェーズ）
 - 成果物:
-  - 同一入力100語で Unity/Python 比較CSV（CTC/AR別）
+  - 同一入力100語で Unity/Python 比較CSV（AR）
   - 差分上位ケース（入力・Python・Unity）レポート
 - 完了条件:
-  - CTC差分率 < 1%
   - AR greedy差分率 < 1%
 - 実装タスク:
   - Python基準出力生成（`uv run python ...`）
@@ -177,15 +184,15 @@
 
 ### 4.2 直近スケジュール（提案）
 
-1. 2026-02-24: 100語セットで CTC 同値検証を完了  
-2. 2026-02-25: 100語セットで AR 同値検証を完了  
+1. 2026-02-24: 100語セットで AR 同値検証を完了  
+2. 2026-02-25: 100語セットの差分分析を完了  
 3. 2026-02-26: 1000語拡張と差分分析レポートを完了
 
 ---
 
 ## 5. 優先順位（更新）
 
-1. 100語セットの Python/Unity 同値検証（CTC→AR順）  
+1. 100語セットの Python/Unity 同値検証（AR）  
 2. 1000語拡張と差分ケース分析（正規化込み）  
 3. PER/WER/Prosody F1 の自動評価接続
 
@@ -218,7 +225,7 @@
 
 - 指摘: 「Python同品質」の定義が抽象的。  
 - 改善: 少なくとも下記を完了条件に固定:
-  - 同一入力集合で token 列一致率を算出（CTC/AR別）
+  - 同一入力集合で token 列一致率を算出（AR）
   - 不一致ケースの上位N件を保存
   - `normalize_ipa.py` 相当ルール適用後の PER/Prosody F1 を比較
 - 結論: 文字列一致だけでなく評価指標の一致を必須化する必要がある。
@@ -230,9 +237,9 @@
 - 結論: 実行順は以下が安全:
   1. HF認証確認  
   2. モデル取得 + SHA固定  
-  3. Unity CTC  
-  4. Unity AR  
-  5. Python同値検証
+  3. Unity AR  
+  4. Python同値検証  
+  5. 指標評価と運用手順の確定
 
 ### レビュー総括
 
