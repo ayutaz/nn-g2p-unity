@@ -20,7 +20,7 @@ namespace NnG2p.Runtime
         [SerializeField] private ModelAsset decoderStepModelAsset;
 
         [Header("Runtime")]
-        [SerializeField] private BackendType backendType = BackendType.GPUCompute;
+        [SerializeField] private BackendType backendType = BackendType.CPU;
         [SerializeField] private NnG2pInferenceMode defaultMode = NnG2pInferenceMode.Autoregressive;
         [SerializeField] private string language = "ja";
         [SerializeField] private int maxLen = 512;
@@ -99,7 +99,15 @@ namespace NnG2p.Runtime
 
         public NnG2pInferenceResult Predict(string text, NnG2pInferenceMode? modeOverride = null)
         {
-            if (!_isInitialized)
+            var needsInit =
+                !_isInitialized ||
+                _graphemeVocab == null ||
+                _phoneVocab == null ||
+                _prosodyVocab == null ||
+                _encoderWorker == null ||
+                _decoderStepWorker == null;
+
+            if (needsInit)
             {
                 if (!TryInitialize(out var initError))
                 {
@@ -272,57 +280,33 @@ namespace NnG2p.Runtime
 
             var decodePosition = 0;
             var effectiveMaxLen = ComputeEffectiveMaxLen(effectiveSrcLen);
-            var tokenShape = new TensorShape(1, decoderContextLength);
-            using var phoneTokensTensor = new Tensor<int>(tokenShape, phoneInputIds);
-            using var prosodyTokensTensor = new Tensor<int>(tokenShape, prosodyInputIds);
             for (var step = 0; step < effectiveMaxLen; step++)
             {
+                using var phoneTokensTensor = new Tensor<int>(new TensorShape(1, decoderContextLength), phoneInputIds);
+                using var prosodyTokensTensor = new Tensor<int>(new TensorShape(1, decoderContextLength), prosodyInputIds);
+
                 _decoderStepWorker.SetInput("memory", memory);
                 _decoderStepWorker.SetInput("src_pad_mask", srcPadMask);
                 _decoderStepWorker.SetInput("phone_tokens", phoneTokensTensor);
                 _decoderStepWorker.SetInput("prosody_tokens", prosodyTokensTensor);
                 _decoderStepWorker.Schedule();
 
-                int nextPhone;
-                int nextProsody;
-                if (backendType == BackendType.CPU)
-                {
-                    var phoneLogits = PeekOutputForRead<float>(_decoderStepWorker, "phone_logits");
-                    var prosodyLogits = PeekOutputForRead<float>(_decoderStepWorker, "prosody_logits");
-                    nextPhone = SelectNextToken(
-                        phoneLogits,
-                        decodePosition,
-                        phoneSeen,
-                        phoneFinished,
-                        _phoneVocab.EosId,
-                        repetitionPenalty);
-                    nextProsody = SelectNextToken(
-                        prosodyLogits,
-                        decodePosition,
-                        prosodySeen,
-                        prosodyFinished,
-                        _prosodyVocab.EosId,
-                        repetitionPenalty);
-                }
-                else
-                {
-                    using var phoneLogits = ReadOutputClone<float>(_decoderStepWorker, "phone_logits");
-                    using var prosodyLogits = ReadOutputClone<float>(_decoderStepWorker, "prosody_logits");
-                    nextPhone = SelectNextToken(
-                        phoneLogits,
-                        decodePosition,
-                        phoneSeen,
-                        phoneFinished,
-                        _phoneVocab.EosId,
-                        repetitionPenalty);
-                    nextProsody = SelectNextToken(
-                        prosodyLogits,
-                        decodePosition,
-                        prosodySeen,
-                        prosodyFinished,
-                        _prosodyVocab.EosId,
-                        repetitionPenalty);
-                }
+                using var phoneLogits = ReadOutputClone<float>(_decoderStepWorker, "phone_logits");
+                using var prosodyLogits = ReadOutputClone<float>(_decoderStepWorker, "prosody_logits");
+                var nextPhone = SelectNextToken(
+                    phoneLogits,
+                    decodePosition,
+                    phoneSeen,
+                    phoneFinished,
+                    _phoneVocab.EosId,
+                    repetitionPenalty);
+                var nextProsody = SelectNextToken(
+                    prosodyLogits,
+                    decodePosition,
+                    prosodySeen,
+                    prosodyFinished,
+                    _prosodyVocab.EosId,
+                    repetitionPenalty);
 
                 phoneIds.Add(nextPhone);
                 prosodyIds.Add(nextProsody);
@@ -344,8 +328,6 @@ namespace NnG2p.Runtime
                 {
                     phoneInputIds[decodePosition] = nextPhone;
                     prosodyInputIds[decodePosition] = nextProsody;
-                    phoneTokensTensor[0, decodePosition] = nextPhone;
-                    prosodyTokensTensor[0, decodePosition] = nextProsody;
                 }
 
                 if (phoneFinished && prosodyFinished)
@@ -458,18 +440,6 @@ namespace NnG2p.Runtime
             }
 
             return output.ReadbackAndClone();
-        }
-
-        private static Tensor<T> PeekOutputForRead<T>(Worker worker, string outputName) where T : unmanaged
-        {
-            var output = worker.PeekOutput(outputName) as Tensor<T>;
-            if (output == null)
-            {
-                throw new InvalidOperationException($"Output '{outputName}' is unavailable or has unexpected type.");
-            }
-
-            output.CompleteAllPendingOperations();
-            return output;
         }
 
         private List<string> TokenizeInput(string text)
