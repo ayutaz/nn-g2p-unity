@@ -20,7 +20,7 @@ namespace NnG2p.Runtime
         [SerializeField] private ModelAsset decoderStepModelAsset;
 
         [Header("Runtime")]
-        [SerializeField] private BackendType backendType = BackendType.CPU;
+        [SerializeField] private BackendType backendType = BackendType.GPUCompute;
         [SerializeField] private NnG2pInferenceMode defaultMode = NnG2pInferenceMode.Autoregressive;
         [SerializeField] private string language = "ja";
         [SerializeField] private int maxLen = 512;
@@ -75,12 +75,12 @@ namespace NnG2p.Runtime
                 _prosodyVocab = NnG2pVocab.LoadFromFile(ResolveVocabPath(prosodyVocabFile));
 
                 var encoderModel = ModelLoader.Load(encoderModelAsset);
-                _encoderWorker = new Worker(encoderModel, backendType);
+                _encoderWorker = CreateWorkerWithFallback(encoderModel, "encoder");
 
                 if (decoderStepModelAsset != null)
                 {
                     var decoderModel = ModelLoader.Load(decoderStepModelAsset);
-                    _decoderStepWorker = new Worker(decoderModel, backendType);
+                    _decoderStepWorker = CreateWorkerWithFallback(decoderModel, "decoder_step");
                 }
 
                 _isInitialized = true;
@@ -186,8 +186,14 @@ namespace NnG2p.Runtime
                 Debug.LogWarning($"Input length {srcIds.Count} exceeds fixedEncoderInputLength={fixedEncoderInputLength}. Truncating input.");
             }
 
-            var padded = Enumerable.Repeat(_graphemeVocab.PadId, fixedEncoderInputLength).ToArray();
-            srcPadMaskValues = Enumerable.Repeat((byte)1, fixedEncoderInputLength).ToArray();
+            var padded = new int[fixedEncoderInputLength];
+            srcPadMaskValues = new byte[fixedEncoderInputLength];
+            for (var i = 0; i < fixedEncoderInputLength; i++)
+            {
+                padded[i] = _graphemeVocab.PadId;
+                srcPadMaskValues[i] = 1;
+            }
+
             for (var i = 0; i < effectiveSourceLength; i++)
             {
                 padded[i] = srcIds[i];
@@ -199,8 +205,9 @@ namespace NnG2p.Runtime
 
         private Tensor<float> RunEncoder(IReadOnlyList<int> srcIds)
         {
-            var srcShape = new TensorShape(1, srcIds.Count);
-            using var srcTensor = new Tensor<int>(srcShape, srcIds.ToArray());
+            var srcData = srcIds as int[] ?? srcIds.ToArray();
+            var srcShape = new TensorShape(1, srcData.Length);
+            using var srcTensor = new Tensor<int>(srcShape, srcData);
 
             _encoderWorker.SetInput("src", srcTensor);
             _encoderWorker.Schedule();
@@ -241,44 +248,93 @@ namespace NnG2p.Runtime
             var prosodyFinished = false;
 
             var decoderContextLength = Mathf.Max(1, fixedDecoderContextLength);
-            var phoneInputIds = Enumerable.Repeat(_phoneVocab.PadId, decoderContextLength).ToArray();
-            var prosodyInputIds = Enumerable.Repeat(_prosodyVocab.PadId, decoderContextLength).ToArray();
+            var phoneInputIds = new int[decoderContextLength];
+            var prosodyInputIds = new int[decoderContextLength];
+            for (var i = 0; i < decoderContextLength; i++)
+            {
+                phoneInputIds[i] = _phoneVocab.PadId;
+                prosodyInputIds[i] = _prosodyVocab.PadId;
+            }
+
             phoneInputIds[0] = _phoneVocab.BosId;
             prosodyInputIds[0] = _prosodyVocab.BosId;
+            var phoneSeen = repetitionPenalty > 1.0f ? new bool[_phoneVocab.Tokens.Count] : null;
+            var prosodySeen = repetitionPenalty > 1.0f ? new bool[_prosodyVocab.Tokens.Count] : null;
+            if (phoneSeen != null)
+            {
+                phoneSeen[_phoneVocab.BosId] = true;
+            }
+
+            if (prosodySeen != null)
+            {
+                prosodySeen[_prosodyVocab.BosId] = true;
+            }
 
             var decodePosition = 0;
             var effectiveMaxLen = ComputeEffectiveMaxLen(effectiveSrcLen);
+            var tokenShape = new TensorShape(1, decoderContextLength);
+            using var phoneTokensTensor = new Tensor<int>(tokenShape, phoneInputIds);
+            using var prosodyTokensTensor = new Tensor<int>(tokenShape, prosodyInputIds);
             for (var step = 0; step < effectiveMaxLen; step++)
             {
-                using var phoneTokensTensor = new Tensor<int>(new TensorShape(1, decoderContextLength), phoneInputIds);
-                using var prosodyTokensTensor = new Tensor<int>(new TensorShape(1, decoderContextLength), prosodyInputIds);
-
                 _decoderStepWorker.SetInput("memory", memory);
                 _decoderStepWorker.SetInput("src_pad_mask", srcPadMask);
                 _decoderStepWorker.SetInput("phone_tokens", phoneTokensTensor);
                 _decoderStepWorker.SetInput("prosody_tokens", prosodyTokensTensor);
                 _decoderStepWorker.Schedule();
 
-                using var phoneLogits = ReadOutputClone<float>(_decoderStepWorker, "phone_logits");
-                using var prosodyLogits = ReadOutputClone<float>(_decoderStepWorker, "prosody_logits");
-
-                var nextPhone = SelectNextToken(
-                    phoneLogits,
-                    decodePosition,
-                    phoneIds,
-                    phoneFinished,
-                    _phoneVocab.EosId,
-                    repetitionPenalty);
-                var nextProsody = SelectNextToken(
-                    prosodyLogits,
-                    decodePosition,
-                    prosodyIds,
-                    prosodyFinished,
-                    _prosodyVocab.EosId,
-                    repetitionPenalty);
+                int nextPhone;
+                int nextProsody;
+                if (backendType == BackendType.CPU)
+                {
+                    var phoneLogits = PeekOutputForRead<float>(_decoderStepWorker, "phone_logits");
+                    var prosodyLogits = PeekOutputForRead<float>(_decoderStepWorker, "prosody_logits");
+                    nextPhone = SelectNextToken(
+                        phoneLogits,
+                        decodePosition,
+                        phoneSeen,
+                        phoneFinished,
+                        _phoneVocab.EosId,
+                        repetitionPenalty);
+                    nextProsody = SelectNextToken(
+                        prosodyLogits,
+                        decodePosition,
+                        prosodySeen,
+                        prosodyFinished,
+                        _prosodyVocab.EosId,
+                        repetitionPenalty);
+                }
+                else
+                {
+                    using var phoneLogits = ReadOutputClone<float>(_decoderStepWorker, "phone_logits");
+                    using var prosodyLogits = ReadOutputClone<float>(_decoderStepWorker, "prosody_logits");
+                    nextPhone = SelectNextToken(
+                        phoneLogits,
+                        decodePosition,
+                        phoneSeen,
+                        phoneFinished,
+                        _phoneVocab.EosId,
+                        repetitionPenalty);
+                    nextProsody = SelectNextToken(
+                        prosodyLogits,
+                        decodePosition,
+                        prosodySeen,
+                        prosodyFinished,
+                        _prosodyVocab.EosId,
+                        repetitionPenalty);
+                }
 
                 phoneIds.Add(nextPhone);
                 prosodyIds.Add(nextProsody);
+                if (phoneSeen != null && nextPhone >= 0 && nextPhone < phoneSeen.Length)
+                {
+                    phoneSeen[nextPhone] = true;
+                }
+
+                if (prosodySeen != null && nextProsody >= 0 && nextProsody < prosodySeen.Length)
+                {
+                    prosodySeen[nextProsody] = true;
+                }
 
                 phoneFinished |= nextPhone == _phoneVocab.EosId;
                 prosodyFinished |= nextProsody == _prosodyVocab.EosId;
@@ -288,6 +344,8 @@ namespace NnG2p.Runtime
                 {
                     phoneInputIds[decodePosition] = nextPhone;
                     prosodyInputIds[decodePosition] = nextProsody;
+                    phoneTokensTensor[0, decodePosition] = nextPhone;
+                    prosodyTokensTensor[0, decodePosition] = nextProsody;
                 }
 
                 if (phoneFinished && prosodyFinished)
@@ -320,7 +378,12 @@ namespace NnG2p.Runtime
 
         private static Tensor<int> BuildSrcPadMask(IReadOnlyList<byte> srcPadMaskValues)
         {
-            var mask = srcPadMaskValues.Select(v => (int)v).ToArray();
+            var mask = new int[srcPadMaskValues.Count];
+            for (var i = 0; i < srcPadMaskValues.Count; i++)
+            {
+                mask[i] = srcPadMaskValues[i];
+            }
+
             return new Tensor<int>(new TensorShape(1, mask.Length), mask);
         }
 
@@ -338,7 +401,7 @@ namespace NnG2p.Runtime
         private static int SelectNextToken(
             Tensor<float> logits,
             int decodePosition,
-            IReadOnlyCollection<int> generatedTokens,
+            IReadOnlyList<bool> seenTokens,
             bool finished,
             int eosId,
             float repetitionPenaltyValue)
@@ -365,18 +428,13 @@ namespace NnG2p.Runtime
                 throw new InvalidOperationException($"Decoder logits shape must be [1, vocab] or [1, seq, vocab], but got {logits.shape}.");
             }
 
-            HashSet<int> penalized = null;
-            if (repetitionPenaltyValue > 1.0f)
-            {
-                penalized = new HashSet<int>(generatedTokens);
-            }
-
             var bestIndex = 0;
             var bestScore = float.NegativeInfinity;
+            var applyPenalty = repetitionPenaltyValue > 1.0f && seenTokens != null;
             for (var i = 0; i < vocabSize; i++)
             {
                 var score = logits.shape.rank == 2 ? logits[0, i] : logits[0, timeIndex, i];
-                if (penalized != null && penalized.Contains(i))
+                if (applyPenalty && i < seenTokens.Count && seenTokens[i])
                 {
                     score /= repetitionPenaltyValue;
                 }
@@ -400,6 +458,18 @@ namespace NnG2p.Runtime
             }
 
             return output.ReadbackAndClone();
+        }
+
+        private static Tensor<T> PeekOutputForRead<T>(Worker worker, string outputName) where T : unmanaged
+        {
+            var output = worker.PeekOutput(outputName) as Tensor<T>;
+            if (output == null)
+            {
+                throw new InvalidOperationException($"Output '{outputName}' is unavailable or has unexpected type.");
+            }
+
+            output.CompleteAllPendingOperations();
+            return output;
         }
 
         private List<string> TokenizeInput(string text)
@@ -426,6 +496,21 @@ namespace NnG2p.Runtime
 
             worker.Dispose();
             worker = null;
+        }
+
+        private Worker CreateWorkerWithFallback(Model model, string modelName)
+        {
+            try
+            {
+                return new Worker(model, backendType);
+            }
+            catch (Exception primaryError) when (backendType != BackendType.CPU)
+            {
+                Debug.LogWarning(
+                    $"Failed to create {modelName} worker with backend={backendType}. Falling back to CPU. Error: {primaryError.Message}");
+                backendType = BackendType.CPU;
+                return new Worker(model, backendType);
+            }
         }
 
         private static string ResolveVocabPath(string vocabFileName)
