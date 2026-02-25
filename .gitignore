@@ -40,6 +40,7 @@ sysinfo.txt
 
 # Local agent/tooling files
 .codex/
+.uloop/
 .uv-cache/
 .env
 .env.*
@@ -48,3 +49,4 @@ third_party/
 # Local-only Unity settings (already tracked files are not ignored retroactively)
 ProjectSettings/PackageManagerSettings.asset
 ProjectSettings/ProjectSettings.asset
+ProjectSettings/SceneTemplateSettings.json
