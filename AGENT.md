@@ -72,13 +72,9 @@
 
 ## モデル再取得（必要時のみ）
 - Hugging Face: `ayousanz/nn-g2p-jp`
-- ダウンロードツール:
-  - `tools/download_hf_nn_g2p.py`
-- 実行例:
-  - `uv venv .venv`
-  - `.\\.venv\\Scripts\\Activate.ps1`
-  - `$env:HF_TOKEN="<token>"`
-  - `uv run python tools/download_hf_nn_g2p.py --repo ayousanz/nn-g2p-jp`
+- ONNX / vocab を取得して、以下を手動更新する:
+  - `Assets/StreamingAssets/nn-g2p`
+  - `Assets/NNG2P/Models`
 - 注意:
   - トークンや `.env` はコミットしない。
   - 検証用の candidate ONNX はコミットしない。

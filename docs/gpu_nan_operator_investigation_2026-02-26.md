@@ -15,7 +15,7 @@
     - SHA256: `11821663B2B914ACC68910576BE958E87EAF2820A0E245486B14B35B091617B7`
 
 ## Method
-- Added Editor diagnostics: `Assets/Editor/NnG2pGpuDiagnostics.cs`
+- Added temporary Editor diagnostics (used during investigation, not part of runtime)
 - Probes executed via MCP (`uloop execute-menu-item`):
   - Output-level checks (native fallback enabled/disabled, backend variants)
   - Layer-by-layer checks (`ScheduleIterable`) to find first NaN layer
