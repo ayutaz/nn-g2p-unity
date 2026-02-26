@@ -18,9 +18,8 @@
   - `Assets/Scripts/NNG2P/NnG2pSampleSceneController.cs`
 - サンプルシーン:
   - `Assets/Scenes/NnG2pSampleScene.unity`
-- 技術ドキュメント:
-  - `docs/nn-g2p-model_technical_investigation.md`
-  - `docs/gpu_nan_operator_investigation_2026-02-26.md`
+- デモ画像:
+  - `docs/demo.png`
 
 ## モデル・配置ルール
 - ONNX（Unityで使用）:
