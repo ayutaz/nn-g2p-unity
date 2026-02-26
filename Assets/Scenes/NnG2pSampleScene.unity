@@ -921,6 +921,7 @@ MonoBehaviour:
   backendType: 512
   preferGpuWhenAvailable: 1
   fallbackToCpuWhenGpuOutputLooksInvalid: 1
+  validateGpuNumericsOnInitialize: 1
   minPhoneTokenCountForGpuOutput: 4
   defaultMode: 2
   language: ja
@@ -2777,7 +2778,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: NN-G2P Sample (Japanese Input / TextMeshPro)
+  m_text: NN-G2P Sample
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: cf18f87e813f86340b05bee9db99bfe3, type: 2}
   m_sharedMaterial: {fileID: -440127301186548130, guid: cf18f87e813f86340b05bee9db99bfe3, type: 2}
@@ -2811,7 +2812,7 @@ MonoBehaviour:
   m_fontSizeMin: 18
   m_fontSizeMax: 72
   m_fontStyle: 0
-  m_HorizontalAlignment: 1
+  m_HorizontalAlignment: 2
   m_VerticalAlignment: 512
   m_textAlignment: 65535
   m_characterSpacing: 0
