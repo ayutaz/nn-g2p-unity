@@ -62,21 +62,6 @@ $env:HF_TOKEN="<your_hf_token>"  # private repo の場合
 uv run python tools/download_hf_nn_g2p.py --repo ayousanz/nn-g2p-jp
 ```
 
-## Test
-
-uLoop MCP（port `8746`）経由の実行例:
-
-```bash
-uloop compile -p 8746 --wait-for-domain-reload true
-uloop run-tests -p 8746 --test-mode EditMode
-uloop run-tests -p 8746 --test-mode PlayMode
-```
-
-最新確認（2026-02-26）:
-
-- `compile`: Error `0` / Warning `0`
-- `EditMode`: `19/19` Passed
-
 ## Known Limitations
 
 - 現在の同梱モデルは日本語前提です（英語品質は保証しません）。
@@ -90,16 +75,7 @@ uloop run-tests -p 8746 --test-mode PlayMode
 - GPU NaN 切り分け: `docs/gpu_nan_operator_investigation_2026-02-26.md`
 - AR 最適化調査: `docs/ar_optimization_15agent_investigation.md`
 
-## Security Notes
-
-- `.env`、HF token、個人認証情報はコミットしないでください。
-
-## Contributing
-
-Issue / Pull Request を歓迎します。  
-大きな変更は先に issue で目的と方針を共有してください。
-
 ## License
 
-このリポジトリにはまだ `LICENSE` ファイルがありません。  
-OSS 公開時は必ずライセンスを追加してください。
+Apache License 2.0 (`Apache-2.0`)  
+Copyright 2026 ayutaz
