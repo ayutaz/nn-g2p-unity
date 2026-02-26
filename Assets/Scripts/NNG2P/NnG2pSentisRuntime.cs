@@ -21,6 +21,10 @@ namespace NnG2p.Runtime
 
         [Header("Runtime")]
         [SerializeField] private BackendType backendType = BackendType.CPU;
+        [SerializeField] private bool preferGpuWhenAvailable = true;
+        [SerializeField] private bool fallbackToCpuWhenGpuOutputLooksInvalid = true;
+        [SerializeField] private bool validateGpuNumericsOnInitialize = true;
+        [SerializeField, Min(1)] private int minPhoneTokenCountForGpuOutput = 4;
         [SerializeField] private NnG2pInferenceMode defaultMode = NnG2pInferenceMode.Autoregressive;
         [SerializeField] private string language = "ja";
         [SerializeField] private int maxLen = 512;
@@ -43,9 +47,11 @@ namespace NnG2p.Runtime
 
         private bool _isInitialized;
         private string _lastInitError;
+        private BackendType _activeBackendType = BackendType.CPU;
 
         public bool IsInitialized => _isInitialized;
         public string LastInitError => _lastInitError;
+        public BackendType ActiveBackendType => _activeBackendType;
 
         private void OnDestroy()
         {
@@ -57,9 +63,16 @@ namespace NnG2p.Runtime
             DisposeWorker(ref _encoderWorker);
             DisposeWorker(ref _decoderStepWorker);
             _isInitialized = false;
+            _activeBackendType = BackendType.CPU;
         }
 
         public bool TryInitialize(out string error)
+        {
+            var requestedBackend = ResolveRequestedBackend();
+            return TryInitialize(requestedBackend, out error);
+        }
+
+        private bool TryInitialize(BackendType requestedBackend, out string error)
         {
             Dispose();
 
@@ -74,14 +87,8 @@ namespace NnG2p.Runtime
                 _phoneVocab = NnG2pVocab.LoadFromFile(ResolveVocabPath(phoneVocabFile));
                 _prosodyVocab = NnG2pVocab.LoadFromFile(ResolveVocabPath(prosodyVocabFile));
 
-                var encoderModel = ModelLoader.Load(encoderModelAsset);
-                _encoderWorker = CreateWorkerWithFallback(encoderModel, "encoder");
-
-                if (decoderStepModelAsset != null)
-                {
-                    var decoderModel = ModelLoader.Load(decoderStepModelAsset);
-                    _decoderStepWorker = CreateWorkerWithFallback(decoderModel, "decoder_step");
-                }
+                CreateWorkersWithFallback(requestedBackend);
+                ValidateBackendNumericsIfNeeded();
 
                 _isInitialized = true;
                 _lastInitError = string.Empty;
@@ -99,6 +106,11 @@ namespace NnG2p.Runtime
 
         public NnG2pInferenceResult Predict(string text, NnG2pInferenceMode? modeOverride = null)
         {
+            return PredictInternal(text, modeOverride, allowGpuFallback: true);
+        }
+
+        private NnG2pInferenceResult PredictInternal(string text, NnG2pInferenceMode? modeOverride, bool allowGpuFallback)
+        {
             var needsInit =
                 !_isInitialized ||
                 _graphemeVocab == null ||
@@ -115,6 +127,24 @@ namespace NnG2p.Runtime
                 }
             }
 
+            var result = ExecutePredictCore(text, modeOverride);
+            if (allowGpuFallback && ShouldRetryWithCpu(result))
+            {
+                Debug.LogWarning(
+                    $"GPU inference output looked invalid (sourceLen={result.SourceIds.Length}, phoneLen={result.Phones.Length}). Retrying on CPU.");
+                if (!TryInitialize(BackendType.CPU, out var cpuInitError))
+                {
+                    throw new InvalidOperationException($"GPU output fallback failed: {cpuInitError}");
+                }
+
+                return PredictInternal(text, modeOverride, allowGpuFallback: false);
+            }
+
+            return result;
+        }
+
+        private NnG2pInferenceResult ExecutePredictCore(string text, NnG2pInferenceMode? modeOverride)
+        {
             var graphemes = TokenizeInput(text);
             var srcIds = _graphemeVocab.EncodeTokens(graphemes, addBosEos: false);
 
@@ -176,6 +206,147 @@ namespace NnG2p.Runtime
             throw new NotSupportedException("Requested inference mode is not supported. Use Autoregressive mode.");
         }
 
+        private BackendType ResolveRequestedBackend()
+        {
+            if (preferGpuWhenAvailable && SystemInfo.supportsComputeShaders)
+            {
+                return BackendType.GPUCompute;
+            }
+
+            return backendType;
+        }
+
+        private bool ShouldRetryWithCpu(NnG2pInferenceResult result)
+        {
+            if (!fallbackToCpuWhenGpuOutputLooksInvalid || _activeBackendType == BackendType.CPU || result == null)
+            {
+                return false;
+            }
+
+            var sourceCount = result.SourceIds?.Length ?? 0;
+            if (sourceCount <= 0)
+            {
+                return false;
+            }
+
+            var phoneCount = result.Phones?.Length ?? 0;
+            if (phoneCount <= 0)
+            {
+                return true;
+            }
+
+            if (sourceCount >= 6 && phoneCount < minPhoneTokenCountForGpuOutput)
+            {
+                return true;
+            }
+
+            if (sourceCount >= 12 && phoneCount * 5 < sourceCount)
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private void ValidateBackendNumericsIfNeeded()
+        {
+            if (!validateGpuNumericsOnInitialize || _activeBackendType == BackendType.CPU || !fallbackToCpuWhenGpuOutputLooksInvalid)
+            {
+                return;
+            }
+
+            if (IsCurrentBackendNumericallyHealthy(out var reason))
+            {
+                return;
+            }
+
+            Debug.LogWarning(
+                $"Backend {_activeBackendType} failed numeric validation ({reason}). Falling back to CPU backend.");
+            DisposeWorker(ref _encoderWorker);
+            DisposeWorker(ref _decoderStepWorker);
+            CreateWorkersWithFallback(BackendType.CPU);
+        }
+
+        private bool IsCurrentBackendNumericallyHealthy(out string reason)
+        {
+            reason = string.Empty;
+            try
+            {
+                var probeSource = new[] { _graphemeVocab.UnkId };
+                var encoderInput = BuildEncoderInput(probeSource, out var srcPadMaskValues, out _);
+                using var memory = RunEncoder(encoderInput);
+                if (ContainsNaN(memory))
+                {
+                    reason = "encoder output contains NaN";
+                    return false;
+                }
+
+                if (_decoderStepWorker != null)
+                {
+                    using var srcPadMask = BuildSrcPadMask(srcPadMaskValues);
+                    var contextLength = Mathf.Max(1, fixedDecoderContextLength);
+                    var phoneInputIds = new int[contextLength];
+                    var prosodyInputIds = new int[contextLength];
+                    for (var i = 0; i < contextLength; i++)
+                    {
+                        phoneInputIds[i] = _phoneVocab.PadId;
+                        prosodyInputIds[i] = _prosodyVocab.PadId;
+                    }
+
+                    phoneInputIds[0] = _phoneVocab.BosId;
+                    prosodyInputIds[0] = _prosodyVocab.BosId;
+
+                    using var phoneTokensTensor = new Tensor<int>(new TensorShape(1, contextLength), phoneInputIds);
+                    using var prosodyTokensTensor = new Tensor<int>(new TensorShape(1, contextLength), prosodyInputIds);
+                    _decoderStepWorker.SetInput("memory", memory);
+                    _decoderStepWorker.SetInput("src_pad_mask", srcPadMask);
+                    _decoderStepWorker.SetInput("phone_tokens", phoneTokensTensor);
+                    _decoderStepWorker.SetInput("prosody_tokens", prosodyTokensTensor);
+                    _decoderStepWorker.Schedule();
+
+                    using var phoneLogits = ReadOutputClone<float>(_decoderStepWorker, "phone_logits");
+                    using var prosodyLogits = ReadOutputClone<float>(_decoderStepWorker, "prosody_logits");
+                    if (ContainsNaN(phoneLogits) || ContainsNaN(prosodyLogits))
+                    {
+                        reason = "decoder output contains NaN";
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                reason = ex.Message;
+                return false;
+            }
+        }
+
+        private static bool ContainsNaN(Tensor<float> tensor)
+        {
+            if (tensor == null)
+            {
+                return true;
+            }
+
+            using var clone = tensor.ReadbackAndClone() as Tensor<float>;
+            if (clone == null)
+            {
+                return true;
+            }
+
+            clone.CompleteAllPendingOperations();
+            for (var i = 0; i < clone.count; i++)
+            {
+                if (float.IsNaN(clone[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private int[] BuildEncoderInput(
             IReadOnlyList<int> srcIds,
             out byte[] srcPadMaskValues,
@@ -231,7 +402,9 @@ namespace NnG2p.Runtime
                 throw new InvalidOperationException("Encoder output 'memory' could not be read as Tensor<float>.");
             }
 
-            return memoryOutput.ReadbackAndClone();
+            var memoryClone = memoryOutput.ReadbackAndClone();
+            memoryClone.CompleteAllPendingOperations();
+            return memoryClone;
         }
 
         private NnG2pInferenceResult DecodeAutoregressive(
@@ -439,7 +612,9 @@ namespace NnG2p.Runtime
                 throw new InvalidOperationException($"Output '{outputName}' is unavailable or has unexpected type.");
             }
 
-            return output.ReadbackAndClone();
+            var clone = output.ReadbackAndClone();
+            clone.CompleteAllPendingOperations();
+            return clone;
         }
 
         private List<string> TokenizeInput(string text)
@@ -468,18 +643,39 @@ namespace NnG2p.Runtime
             worker = null;
         }
 
-        private Worker CreateWorkerWithFallback(Model model, string modelName)
+        private void CreateWorkersWithFallback(BackendType requestedBackend)
         {
+            var encoderModel = ModelLoader.Load(encoderModelAsset);
+            Model decoderModel = null;
+            if (decoderStepModelAsset != null)
+            {
+                decoderModel = ModelLoader.Load(decoderStepModelAsset);
+            }
+
             try
             {
-                return new Worker(model, backendType);
+                _encoderWorker = new Worker(encoderModel, requestedBackend);
+                if (decoderModel != null)
+                {
+                    _decoderStepWorker = new Worker(decoderModel, requestedBackend);
+                }
+
+                _activeBackendType = requestedBackend;
             }
-            catch (Exception primaryError) when (backendType != BackendType.CPU)
+            catch (Exception primaryError) when (requestedBackend != BackendType.CPU)
             {
                 Debug.LogWarning(
-                    $"Failed to create {modelName} worker with backend={backendType}. Falling back to CPU. Error: {primaryError.Message}");
-                backendType = BackendType.CPU;
-                return new Worker(model, backendType);
+                    $"Failed to create workers with backend={requestedBackend}. Falling back to CPU. Error: {primaryError.Message}");
+                DisposeWorker(ref _encoderWorker);
+                DisposeWorker(ref _decoderStepWorker);
+
+                _encoderWorker = new Worker(encoderModel, BackendType.CPU);
+                if (decoderModel != null)
+                {
+                    _decoderStepWorker = new Worker(decoderModel, BackendType.CPU);
+                }
+
+                _activeBackendType = BackendType.CPU;
             }
         }
 
