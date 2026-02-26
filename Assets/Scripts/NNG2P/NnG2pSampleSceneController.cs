@@ -59,7 +59,8 @@ namespace NnG2p.Runtime
                 phoneOutput = string.Join(" ", result.Phones ?? Array.Empty<string>());
                 prosodyOutput = string.Join(" ", result.Prosody ?? Array.Empty<string>());
                 lastError = string.Empty;
-                Debug.Log($"NN-G2P [{result.Mode}] input='{inputText}' phones='{phoneOutput}' prosody='{prosodyOutput}'");
+                Debug.Log(
+                    $"NN-G2P [{result.Mode}] backend={runtime.ActiveBackendType} input='{inputText}' phones='{phoneOutput}' prosody='{prosodyOutput}'");
             }
             catch (Exception ex)
             {

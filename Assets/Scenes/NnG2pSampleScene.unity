@@ -919,6 +919,9 @@ MonoBehaviour:
   encoderModelAsset: {fileID: 5022602860645237092, guid: a024625d410c83e4f80024972448c055, type: 3}
   decoderStepModelAsset: {fileID: 5022602860645237092, guid: c4fdcf9e7f16807479d06bdabf19befa, type: 3}
   backendType: 512
+  preferGpuWhenAvailable: 1
+  fallbackToCpuWhenGpuOutputLooksInvalid: 1
+  minPhoneTokenCountForGpuOutput: 4
   defaultMode: 2
   language: ja
   maxLen: 512

@@ -116,7 +116,8 @@ public sealed class NnG2pSampleUiController : MonoBehaviour
                 errorText.text = string.Empty;
             }
 
-            Debug.Log($"NN-G2P [{result.Mode}] input='{text}' phones='{phones}' prosody='{prosody}'");
+            var backend = runtime != null ? runtime.ActiveBackendType.ToString() : "Unknown";
+            Debug.Log($"NN-G2P [{result.Mode}] backend={backend} input='{text}' phones='{phones}' prosody='{prosody}'");
         }
         catch (Exception ex)
         {
