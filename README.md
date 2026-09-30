@@ -60,6 +60,9 @@ Unity 上で日本語 G2P（Grapheme-to-Phoneme）推論を実行する OSS プ�
 - GPU backend で NaN が発生する既知ケースがあり、実装は自動で CPU にフォールバックします。
 - ビルド時のサンプル起動には `ProjectSettings/EditorBuildSettings.asset` で
   `Assets/Scenes/NnG2pSampleScene.unity` を含めてください。
+- vocab は `Application.streamingAssetsPath` 配下を `File.ReadAllLines` で読み込みます。
+  StreamingAssets が APK 内や URL になる Android / WebGL ではこの方法では読めず、
+  `FileNotFoundException` になります（Editor / Standalone では動作します）。
 
 ## License
 
